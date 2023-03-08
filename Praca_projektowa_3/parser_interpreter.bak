@@ -1,0 +1,79 @@
+#lang plait
+
+
+(module+ test
+  (print-only-errors #t))
+
+;; abstrat syntax ---------------------------------
+
+(define-type Op
+  (add) (sub) (mult) (less_or_equal))
+
+(define-type Exp
+  (numE (number : Number))
+  (varE (variable : Symbol))
+  (opE (left_val : Exp) (op : Op) (right_val : Exp))
+  (ifE (bool : Exp) (if_t : Exp) (if_f : Exp))
+  (letE (var1 : Symbol) (val : Exp) (exp : Exp))
+  (appE (sym_fun : Symbol) (argu : (Listof Exp))))
+
+(define-type Declaration
+  (funE (name : Symbol) (variables : (Listof Exp)) (result : Exp)))
+
+(define-type Program
+  (progE (declar : (Listof Declaration)) (app : Exp)))
+
+; parsery -----------------------------------------
+
+(define (parseExp [s : S-Exp]) : Exp
+  (cond
+    [(s-exp-match? `Number s)
+     (numE (s-exp->number s))]
+    [(s-exp-match? `Symbol s)
+     (varE (s-exp->symbol s))]
+    [(s-exp-match? `(ifz ANY then ANY else ANY) s)
+     (ifE (parseExp (second (s-exp->list s)))
+          (parseExp (fourth (s-exp->list s)))
+          (parseExp (fourth (rest (rest (s-exp->list s))))))]
+    [(s-exp-match? `(let SYMBOL be ANY in ANY) s)
+     (letE (s-exp->symbol (second (s-exp->list s)))
+           (parseExp (fourth (s-exp->list s)))
+           (parseExp (fourth (rest (rest (s-exp->list s))))))]
+    [(s-exp-match? `(SYMBOL (ANY ...)) s)
+     (appE (s-exp->symbol (first (s-exp->list s)))
+           (parseExpList (s-exp->list (second (s-exp->list s)))))]
+    [(s-exp-match? `(ANY SYMBOL ANY) s)
+     (opE (parseExp (first (s-exp->list s)))
+          (symbol->op (s-exp->symbol (second (s-exp->list s))))
+          (parseExp (third (s-exp->list s))))]
+    [else (error 'parse "Unkown pattern to parse to expresion")]
+    ))
+
+(define (parseExpList (lista : (Listof S-Exp))) : (Listof Exp)
+  (if (empty? lista)
+      empty
+      (cons (parseExp (first lista)) (parseExpList (rest lista)))))
+
+(define (symbol->op (sym : Symbol)) : Op
+  (cond
+    [(equal? sym '+) (add)]
+    [(equal? sym '-) (sub)]
+    [(equal? sym '*) (mult)]
+    [(equal? sym '<=) (less_or_equal)]
+    [else (error 'op "Unkown operation")]))
+
+(define (parseDeclaration [s : S-Exp]) : Declaration
+  (cond
+    [(s-exp-match? `(fun SYMBOL (SYMBOL ...) = ANY) s)
+     (funE (s-exp->symbol (second (s-exp->list s)))
+           (parseVarList (s-exp->list (third (s-exp->list s))))
+           (parseExp (fourth (rest (s-exp->list s)))))]
+    [else (error 'parse "Unknown patern to parse the definition")]))
+
+(define (parseVarList (lista : (Listof S-Exp))) : (Listof Exp)
+  (if (empty? lista)
+      empty
+      (cons (varE (s-exp->symbol (first lista)))
+            (parseVarList (rest lista)))))
+
+
